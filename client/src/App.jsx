@@ -11,6 +11,31 @@ function App() {
   const [board, setBoard] = useState([["", "", ""], ["", "", ""], ["", "", ""]])
   const [turn, setTurn] = useState('x')
   const [gameOver, setGameOver] = useState(false)
+  const [roomId, setRoomId] = useState("")
+  const [username, setUsername] = useState("anonymous")
+  const [playerChar, setPlayerChar] = useState("")
+
+  socket.on('log', (data)=>{
+    console.log(data)
+  })
+
+  socket.on('update-game-state', (data) => {
+    setBoard(data.board)
+    setPlayerChar(data.playerChar)
+    setTurn(data.playerTurn)
+  })
+
+  socket.on('board-update', (data) => {
+    setBoard(data.newBoard)
+    setTurn(data.playerTurn)
+  })
+
+  socket.on('reset', (data) => {
+    setBoard([["", "", ""], ["", "", ""], ["", "", ""]])
+    document.getElementById("gameWinText").hidden = true
+    setTurn(data.playerTurn)
+    setGameOver(false)
+  })
 
   const getIcon = (character, row, column) => {
     if (character === "") {
@@ -36,7 +61,7 @@ function App() {
     for (let i = 0; i < 3; i++) {
       if (board[0][i] !== "" && board[1][i] !== "" && board[2][i] !== "") {
         if (board[0][i] === board[1][i] && board[1][i] === board[2][i]) {
-          return { winner: board[i][0], wintype: "column", column: i }
+          return { winner: board[0][i], wintype: "column", column: i }
         }
       }
     }
@@ -59,8 +84,21 @@ function App() {
     return false
   }
 
+  const handleRoomChange = () => {
+    let newRoomId = document.getElementById("room-input").value
+    if(newRoomId !== ""){
+      console.log('adf')
+      setRoomId(newRoomId)
+    }
+    //socket.emit('join-room', roomId)
+  }
+
+  const handleUsernameChange = (e) => {
+    setUsername(e.target.value !== "" ? e.target.value : "anonymous")
+  }
+
   const handleClick = (e) => {
-    if (gameOver) {
+    if (gameOver || playerChar=="spectator" || playerChar != turn) {
       return
     }
     let row = Number(e.target.getAttribute("row"))
@@ -76,31 +114,29 @@ function App() {
       }))
     })
 
-    setBoard(nextBoard)
-    setTurn(turn === 'x' ? 'o' : 'x')
-
     socket.emit('board-update', nextBoard)
   }
 
   useEffect(() => {
     let win = checkWin()
-    setGameOver(win ? true : false)
     if (win) {
+      setGameOver(true)
       console.log(win)
       document.getElementById("gameWinText").hidden = false
-      document.getElementById("gameWinText").innerText = `Game Over! ${turn === "x" ? "Player O" : "Player X"} Won!`
+      document.getElementById("gameWinText").innerText = `Game Over! ${win.winner === "x" ? "Player X" : "Player O"} Won!`
     } else {
       let draw = true
-      for(const row of board){
-        for(const character of row){
-          if(character === ""){
-            draw=false
+      for (const row of board) {
+        for (const character of row) {
+          if (character === "") {
+            draw = false
             break
           }
         }
-        if(!draw) break
+        if (!draw) break
       }
-      if(draw){
+      if (draw) {
+        setGameOver(true)
         document.getElementById("gameWinText").hidden = false
         document.getElementById("gameWinText").innerText = `Game Over: Draw!`
       }
@@ -108,7 +144,28 @@ function App() {
   }, [board])
 
   return (
-    <div className='bg-zinc-800 flex flex-col items-center justify-center h-full w-full absolute'>
+    <div className='flex flex-wrap items-center justify-center h-full w-full gap-10 absolute'>
+      <div id="control-panel" className='flex flex-col items-center p-5 gap-3 text-white bg-zinc-900 rounded-3xl'>
+        <h1 className='font-bold text-3xl'>Tic Tac Toe</h1>
+        <div className='hidden'>
+          <input id="username-input" autoComplete='off' className='rounded-full px-3 h-7 text-xs w-[21.25rem] bg-zinc-600' placeholder='Username' onChange={handleUsernameChange}/>
+        </div>
+        <div className='flex gap-3 hidden'>
+          <input id="room-input" autoComplete='off' className='rounded-full px-3 text-xs w-72 bg-zinc-600' placeholder='Room ID'/>
+          <button className='bg-zinc-700 text-xs w-10 rounded-full h-7' onClick={handleRoomChange}>Join</button>
+        </div>
+        <button className='rounded-full px-3 h-7 text-xs w-[21.25rem] bg-zinc-700' onClick={() => {socket.emit('reset')}}>
+          Reset Board
+        </button>
+        <div className='text-center bg-zinc-700 p-2 w-[21.25rem] rounded-2xl'>
+          <p className='font-bold italic'>
+            {playerChar !== "spectator" ? `You are player ${playerChar.toUpperCase()}` : "Spectating"}
+          </p>
+          <h1 id="turn-message" className='font-bold text-xl'>
+            {gameOver? `Game Over` : `Player ${turn.toUpperCase()} to play`}
+          </h1>
+        </div>
+      </div>
       <div id="board" className='relative h-96 w-96 bg-zinc-700 rounded-3xl flex items-center justify-center p-4'>
         <img src={gameGrid} />
         <div className='absolute h-full w-full grid grid-cols-3 grid-rows-3'>
@@ -126,13 +183,11 @@ function App() {
             }))
           }
         </div>
-        <h1 
+        <h1
           id='gameWinText'
           className='absolute text-white font-bold text-2xl bg-zinc-900 p-2 rounded-xl'
           hidden
-        >
-          
-        </h1>
+        ></h1>
       </div>
     </div>
   )
